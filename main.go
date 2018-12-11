@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"strings"
 	"time"
 )
 
@@ -24,14 +25,15 @@ type bingImages struct {
 }
 
 func main() {
-	iotdURL := getIotdURL()
 	usr, _ := user.Current()
 	homeDir := usr.HomeDir
-
 	iotdDir := homeDir + "/Pictures/Iotd"
-	iotdFilename := fmt.Sprintf("%s/%s-%s.jpg", iotdDir, time.Now().Format("2006-01-02"), base64.StdEncoding.EncodeToString([]byte(iotdURL)))
-	if _, err := os.Stat(iotdFilename); os.IsNotExist(err) {
-		createIotdImage(iotdURL, iotdDir, iotdFilename)
+	iotdPrefix := time.Now().Format("2006-01-02")
+
+	iotdFilename, err := getIotdFile(iotdDir, iotdPrefix)
+	if err != nil {
+		iotdURL := getIotdURL()
+		iotdFilename = createIotdImage(iotdURL, iotdDir, iotdPrefix)
 	}
 
 	applScript := `/usr/bin/osascript<<END
@@ -41,10 +43,30 @@ end tell
 END`
 
 	if _, err := exec.Command("sh", "-c", fmt.Sprintf(applScript, iotdFilename)).Output(); err != nil {
-		log.Fatalln("command failed: ", err)
+		log.Fatalln("Command failed: ", err)
 	}
 
 	log.Printf("Set desktop wallpaper: %s\n", iotdFilename)
+}
+
+func getIotdFile(iotdDir, iotdPrefix string) (iotdFilename string, err error) {
+	files, err := ioutil.ReadDir(iotdDir)
+	if err != nil {
+		return "", err
+	}
+
+	for _, file := range files {
+		if strings.HasPrefix(file.Name(), iotdPrefix) {
+			iotdFilename = iotdDir + "/" + file.Name()
+			break
+		}
+	}
+
+	if iotdFilename == "" {
+		return "", fmt.Errorf("File not found")
+	}
+
+	return iotdFilename, nil
 }
 
 func getIotdURL() string {
@@ -60,7 +82,9 @@ func getIotdURL() string {
 	return "https://www.bing.com" + j.Images[0].URL
 }
 
-func createIotdImage(iotdURL, iotdDir, iotdFilename string) {
+func createIotdImage(iotdURL, iotdDir, iotdPrefix string) (iotdFilename string) {
+	iotdFilename = fmt.Sprintf("%s/%s-%s.jpg", iotdDir, iotdPrefix, base64.StdEncoding.EncodeToString([]byte(iotdURL)))
+
 	if _, err := os.Stat(iotdDir); os.IsNotExist(err) {
 		log.Printf("Creating directory %s\n", iotdDir)
 		os.MkdirAll(iotdDir, os.ModePerm)
@@ -68,14 +92,20 @@ func createIotdImage(iotdURL, iotdDir, iotdFilename string) {
 
 	log.Printf("Creating file %s\n", iotdFilename)
 
-	resp, _ := http.Get(iotdURL)
+	resp, err := http.Get(iotdURL)
+	if err != nil {
+		log.Fatalf("Could not retrieve %s. Error %s\n", iotdURL, err)
+	}
+
 	defer resp.Body.Close()
 
 	iotdFile, err := os.Create(iotdFilename)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatalf("Could not create %s. Error %s\n", iotdFilename, err)
 	}
 
 	defer iotdFile.Close()
 	io.Copy(iotdFile, resp.Body)
+
+	return iotdFilename
 }
