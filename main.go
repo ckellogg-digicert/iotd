@@ -46,7 +46,7 @@ END`
 		log.Fatalln("Command failed: ", err)
 	}
 
-	log.Printf("Set desktop wallpaper: %s\n", iotdFilename)
+	log.Printf("Set desktop background: %s\n", iotdFilename)
 }
 
 func getIotdFile(iotdDir, iotdPrefix string) (iotdFilename string, err error) {
