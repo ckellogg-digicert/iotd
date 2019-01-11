@@ -16,8 +16,11 @@ import (
 )
 
 type bingImage struct {
-	URL     string `json:"url"`
-	URLBase string `json:"urlbase"`
+	URL       string `json:"url"`
+	URLBase   string `json:"urlbase"`
+	StartDate string `json:"startdate"`
+	Title     string `json:"title"`
+	Copyright string `json:"copyright"`
 }
 
 type bingImages struct {
@@ -28,11 +31,11 @@ func main() {
 	usr, _ := user.Current()
 	homeDir := usr.HomeDir
 	iotdDir := homeDir + "/Pictures/Iotd"
-	iotdPrefix := time.Now().Format("2006-01-02")
+	iotdPrefix := time.Now().Format("20060102")
 
 	iotdFilename, err := getIotdFile(iotdDir, iotdPrefix)
 	if err != nil {
-		iotdURL := getIotdURL()
+		iotdURL := getIotdURL(iotdPrefix)
 		iotdFilename = createIotdImage(iotdURL, iotdDir, iotdPrefix)
 	}
 
@@ -69,7 +72,7 @@ func getIotdFile(iotdDir, iotdPrefix string) (iotdFilename string, err error) {
 	return iotdFilename, nil
 }
 
-func getIotdURL() string {
+func getIotdURL(startDate string) string {
 	iotd, _ := http.Get("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8")
 	var j bingImages
 
@@ -77,6 +80,12 @@ func getIotdURL() string {
 	b, _ := ioutil.ReadAll(iotd.Body)
 	if err := json.Unmarshal(b, &j); err != nil {
 		log.Fatalln(err)
+	}
+
+	// Only change the date if we have a new image
+	if j.Images[0].StartDate != startDate {
+		log.Printf("Start date mismatch: expected: %s actual: %s\n", startDate, j.Images[0].StartDate)
+		os.Exit(0)
 	}
 
 	return "https://www.bing.com" + j.Images[0].URL
