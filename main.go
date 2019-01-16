@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,17 +34,12 @@ func main() {
 
 	iotdFilename, err := getIotdFile(iotdDir, iotdPrefix)
 	if err != nil {
-		iotdURL := getIotdURL(iotdPrefix)
-		iotdFilename = createIotdImage(iotdURL, iotdDir, iotdPrefix)
+		iotdURL, iotdTitle, iotdCopyright := getIotdURL(iotdPrefix)
+		iotdFilename = createIotdImage(iotdURL, iotdDir, iotdPrefix, iotdTitle)
+		createMetadataFile(iotdURL, iotdDir, iotdPrefix, iotdTitle, iotdCopyright)
 	}
 
-	applScript := `/usr/bin/osascript<<END
-tell application "System Events"
-	set picture of every desktop to POSIX file "%s"
-end tell
-END`
-
-	if _, err := exec.Command("sh", "-c", fmt.Sprintf(applScript, iotdFilename)).Output(); err != nil {
+	if _, err := exec.Command("bash", "-c", getCmd(iotdFilename)).Output(); err != nil {
 		log.Fatalln("Command failed: ", err)
 	}
 
@@ -72,7 +66,7 @@ func getIotdFile(iotdDir, iotdPrefix string) (iotdFilename string, err error) {
 	return iotdFilename, nil
 }
 
-func getIotdURL(startDate string) string {
+func getIotdURL(startDate string) (iotdURL, iotdTitle, iotdCopyright string) {
 	iotd, _ := http.Get("https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8")
 	var j bingImages
 
@@ -88,11 +82,11 @@ func getIotdURL(startDate string) string {
 		os.Exit(0)
 	}
 
-	return "https://www.bing.com" + j.Images[0].URL
+	return "https://www.bing.com" + j.Images[0].URL, j.Images[0].Title, j.Images[0].Copyright
 }
 
-func createIotdImage(iotdURL, iotdDir, iotdPrefix string) (iotdFilename string) {
-	iotdFilename = fmt.Sprintf("%s/%s-%s.jpg", iotdDir, iotdPrefix, base64.StdEncoding.EncodeToString([]byte(iotdURL)))
+func createIotdImage(iotdURL, iotdDir, iotdPrefix, iotdTitle string) (iotdFilename string) {
+	iotdFilename = fmt.Sprintf("%s/%s - %s.jpg", iotdDir, iotdPrefix, iotdTitle)
 
 	if _, err := os.Stat(iotdDir); os.IsNotExist(err) {
 		log.Printf("Creating directory %s\n", iotdDir)
@@ -117,4 +111,12 @@ func createIotdImage(iotdURL, iotdDir, iotdPrefix string) (iotdFilename string) 
 	io.Copy(iotdFile, resp.Body)
 
 	return iotdFilename
+}
+
+func createMetadataFile(iotdURL, iotdDir, iotdPrefix, iotdTitle, iotdCopyright string) {
+	iotdFilename := fmt.Sprintf("%s/%s - %s.txt", iotdDir, iotdPrefix, iotdTitle)
+
+	if err := ioutil.WriteFile(iotdFilename, []byte(fmt.Sprintf("Title: %s\nURL: %s\nDescription: %s\n", iotdTitle, iotdURL, iotdCopyright)), 0644); err != nil {
+		log.Fatalf("Could not create %s. Error %s\n", iotdFilename, err)
+	}
 }
