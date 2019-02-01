@@ -17,7 +17,10 @@ done`
 	case "MATE":
 		cmd = "gsettings set org.mate.background picture-filename %s"
 	default:
-		cmd = `if gsettings set org.gnome.desktop.background picture-uri "file://%s"; then
+		cmd = `GNOME_PID=$(pgrep --euid $(id --real --user) gnome-session)
+export DBUS_SESSION_BUS_ADDRESS=$(grep -z DBUS_SESSION_BUS_ADDRESS /proc/$GNOME_PID/environ|cut -d= -f2-)
+GSETTINGS_BACKEND=dconf
+if gsettings set org.gnome.desktop.background picture-uri "file://%s"; then
 	gsettings set org.gnome.desktop.background picture-options "zoom"
 else
 	echo "$XDG_CURRENT_DESKTOP not supported."
