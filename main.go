@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -26,41 +27,62 @@ type bingImages struct {
 	Images []bingImage `json:"images"`
 }
 
+var (
+	iotdPrefix    = time.Now().Format("20060102")
+	viewTodayMeta = flag.Bool("today", false, "Return today's description.")
+	metadataDate  = flag.String("desc", "missing", "Return description for a date in format 'YYYYMMDD'")
+)
+
 func main() {
+	flag.Parse()
 	usr, _ := user.Current()
 	homeDir := usr.HomeDir
 	iotdDir := homeDir + "/Pictures/Iotd"
-	iotdPrefix := time.Now().Format("20060102")
 
-	iotdFilename, err := getIotdFile(iotdDir, iotdPrefix)
+	iotdFilename, err := getIotdFile(iotdDir, iotdPrefix, ".jpg")
 	if err != nil {
 		iotdURL, iotdTitle, iotdCopyright := getIotdURL(iotdPrefix)
 		iotdFilename = createIotdImage(iotdURL, iotdDir, iotdPrefix, iotdTitle)
 		createMetadataFile(iotdURL, iotdDir, iotdPrefix, iotdTitle, iotdCopyright)
 	}
 
-	if _, err := exec.Command("bash", "-c", getCmd(iotdFilename)).Output(); err != nil {
-		log.Fatalln("Command failed: ", err)
-	}
+	if *viewTodayMeta || *metadataDate != "missing" {
+		if *metadataDate == "missing" {
+			*metadataDate = iotdPrefix
+		}
 
-	log.Printf("Set desktop background: %s\n", iotdFilename)
+		metadataFile, err := getIotdFile(iotdDir, *metadataDate, ".txt")
+		if err != nil {
+			log.Fatalln(err)
+		}
+
+		metadata, _ := ioutil.ReadFile(metadataFile)
+
+		log.Printf("%s", metadata)
+	} else {
+		if _, err := exec.Command("bash", "-c", getCmd(iotdFilename)).Output(); err != nil {
+			log.Fatalln("Command failed: ", err)
+		}
+
+		log.Printf("Set desktop background: %s\n", iotdFilename)
+	}
 }
 
-func getIotdFile(iotdDir, iotdPrefix string) (iotdFilename string, err error) {
+func getIotdFile(iotdDir, iotdPrefix, iotdSuffix string) (iotdFilename string, err error) {
 	files, err := ioutil.ReadDir(iotdDir)
 	if err != nil {
 		return "", err
 	}
 
 	for _, file := range files {
-		if strings.HasPrefix(file.Name(), iotdPrefix) {
+		if strings.HasPrefix(file.Name(), iotdPrefix) && strings.HasSuffix(file.Name(), iotdSuffix) {
 			iotdFilename = iotdDir + "/" + file.Name()
 			break
 		}
 	}
 
 	if iotdFilename == "" {
-		return "", fmt.Errorf("File not found")
+		return "", fmt.Errorf("File '%s[*.]%s' not found", iotdPrefix, iotdSuffix)
 	}
 
 	return iotdFilename, nil
